@@ -96,7 +96,7 @@ def sync_folder_to_drive(service, local_folder, drive_parent_id):
 def process_files(files_to_download, owners):
     service = authenticate()
     root_folder_id = get_folder_id(service, "Instructor Files")
-    downloads_dir = Path(BASE_DIR) / ".." / "downloads"
+    downloads_dir = Path(BASE_DIR) / ".." / "Instructor Files"
     downloads_dir.mkdir(exist_ok=True)
     for owner in owners:
         owner_folder = downloads_dir / owner

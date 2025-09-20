@@ -55,9 +55,7 @@ def main():
             try:
                 processor.driver.get(url)
                 time.sleep(1)
-                f_name = get_element_attribute(processor.driver, (By.ID, "mainContent_fname"), "value")
-                l_name = get_element_attribute(processor.driver, (By.ID, "mainContent_lname"), "value")
-                user_name = f_name.strip() + " " + l_name.strip()
+                user_name = get_element_attribute(processor.driver, (By.ID, "mainContent_username"), "value").strip()
                 links = processor.driver.find_elements(By.XPATH, "//a[@title= 'View']")
                 if not links:
                     logger.info(f"No files found for user: {user_name}")
