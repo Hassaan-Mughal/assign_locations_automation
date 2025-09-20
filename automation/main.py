@@ -1,7 +1,4 @@
-import os
 import sys
-import time
-import logging
 from selenium.webdriver.common.by import By
 from Utils.utils import *
 from Utils.drive_uploader import process_files
@@ -39,6 +36,7 @@ class CreateUsersBackup:
                 logger.error(f"Error during cleanup: {e}")
 
 def main():
+    tu_elements_urls = []
     url = "https://www.enrollware.com/admin/tc-user-list.aspx"
     processor = CreateUsersBackup()
     files_to_download = []
@@ -50,15 +48,22 @@ def main():
             return
         total_user_selector = "//td/a[contains(@href, 'user-edit')]"
         total_user_elements = processor.driver.find_elements(By.XPATH, total_user_selector)
-        for i in range(1, len(total_user_elements) + 1):
-            user_selector = f"({total_user_selector})[{i}]"
+        for tu_element in total_user_elements:
+            tu_elements_urls.append(tu_element.get_attribute("href"))
+
+        for url in tu_elements_urls:
             try:
-                click_element_by_js(processor.driver, (By.XPATH, user_selector))
-                time.sleep(2)
+                processor.driver.get(url)
+                time.sleep(1)
                 f_name = get_element_attribute(processor.driver, (By.ID, "mainContent_fname"), "value")
                 l_name = get_element_attribute(processor.driver, (By.ID, "mainContent_lname"), "value")
                 user_name = f_name.strip() + " " + l_name.strip()
                 links = processor.driver.find_elements(By.XPATH, "//a[@title= 'View']")
+                if not links:
+                    logger.info(f"No files found for user: {user_name}")
+                    if user_name not in owners:
+                        owners.append(user_name + " Missing Files")
+                    continue
                 for link in links:
                     file_url = link.get_attribute("href")
                     file_name = link.text.strip()
@@ -70,10 +75,7 @@ def main():
                         })
                         if user_name not in owners:
                             owners.append(user_name)
-                safe_navigate_to_url(processor.driver, url)
-                time.sleep(1)
             except Exception as e:
-                logger.error(f"Error processing user at index {i}: {e}")
                 safe_navigate_to_url(processor.driver, url)
                 time.sleep(2)
         processor.cleanup()
