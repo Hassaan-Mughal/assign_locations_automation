@@ -91,10 +91,3 @@ def navigate_to_settings_users(driver, max_retries: int = 3) -> bool:
 
     logger.error("Failed to navigate to Settings -> Users")
     return False
-
-def create_templete(url: str, owner: str, name: str) -> dict:
-    return {
-        "url": url,
-        "owner": owner,
-        "name": name
-    }

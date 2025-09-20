@@ -1,16 +1,23 @@
+import os
+import sys
+import time
+import logging
 from selenium.webdriver.common.by import By
 from Utils.utils import *
 from Utils.drive_uploader import process_files
-from Utils.functions import login_to_enrollware_and_navigate_to_settings_users, create_templete
+from Utils.functions import login_to_enrollware_and_navigate_to_settings_users
 
+# Ensure the parent directory is in sys.path for reliable imports
+sys.path.append(os.path.dirname(os.path.abspath(__file__)))
 
+logger = logging.getLogger("main")
+logging.basicConfig(level=logging.INFO)
 
 class CreateUsersBackup:
     def __init__(self):
         self.driver = None
 
     def initialize(self) -> bool:
-        """Initialize the processor with safe exception handling."""
         try:
             self.driver = get_undetected_driver()
             if self.driver:
@@ -24,14 +31,12 @@ class CreateUsersBackup:
             return False
 
     def cleanup(self):
-        """Safely cleanup resources."""
         if self.driver:
             try:
                 self.driver.quit()
                 logger.info("Resources cleaned up successfully")
             except Exception as e:
                 logger.error(f"Error during cleanup: {e}")
-
 
 def main():
     url = "https://www.enrollware.com/admin/tc-user-list.aspx"
@@ -45,7 +50,7 @@ def main():
             return
         total_user_selector = "//td/a[contains(@href, 'user-edit')]"
         total_user_elements = processor.driver.find_elements(By.XPATH, total_user_selector)
-        for i in range (1, len(total_user_elements) + 1):
+        for i in range(1, len(total_user_elements) + 1):
             user_selector = f"({total_user_selector})[{i}]"
             try:
                 click_element_by_js(processor.driver, (By.XPATH, user_selector))
@@ -58,7 +63,11 @@ def main():
                     file_url = link.get_attribute("href")
                     file_name = link.text.strip()
                     if file_url and file_name:
-                        files_to_download.append(create_templete(file_url, user_name, file_name))
+                        files_to_download.append({
+                            "url": file_url,
+                            "owner": user_name,
+                            "file_name": file_name
+                        })
                         if user_name not in owners:
                             owners.append(user_name)
                 safe_navigate_to_url(processor.driver, url)
@@ -74,7 +83,6 @@ def main():
             logger.info("No files to download or no owners found.")
     except Exception as e:
         logger.error(f"Unexpected error in main: {e}")
-
     finally:
         if 'processor' in locals():
             processor.cleanup()

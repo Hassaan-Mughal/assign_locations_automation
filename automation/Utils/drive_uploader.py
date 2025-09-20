@@ -2,6 +2,7 @@ import os
 import requests
 import shutil
 from pathlib import Path
+import logging
 
 from google.oauth2.credentials import Credentials
 from google_auth_oauthlib.flow import InstalledAppFlow
@@ -9,17 +10,23 @@ from googleapiclient.discovery import build
 from googleapiclient.http import MediaFileUpload
 
 SCOPES = ["https://www.googleapis.com/auth/drive"]
+BASE_DIR = os.path.dirname(os.path.abspath(__file__))
+TOKEN_PATH = os.path.join(BASE_DIR, "token.json")
+CREDENTIALS_PATH = os.path.join(BASE_DIR, "credentials.json")
+
+logger = logging.getLogger("drive_uploader")
+logging.basicConfig(level=logging.INFO)
 
 # ------------------- AUTHENTICATION -------------------
 def authenticate():
     creds = None
-    if os.path.exists("token.json"):
-        creds = Credentials.from_authorized_user_file("token.json", SCOPES)
+    if os.path.exists(TOKEN_PATH):
+        creds = Credentials.from_authorized_user_file(TOKEN_PATH, SCOPES)
 
     if not creds or not creds.valid:
-        flow = InstalledAppFlow.from_client_secrets_file("credentials.json", SCOPES)
+        flow = InstalledAppFlow.from_client_secrets_file(CREDENTIALS_PATH, SCOPES)
         creds = flow.run_local_server(port=0)
-        with open("token.json", "w") as token:
+        with open(TOKEN_PATH, "w") as token:
             token.write(creds.to_json())
 
     return build("drive", "v3", credentials=creds)
@@ -45,30 +52,34 @@ def get_folder_id(service, folder_name, parent_id=None):
 
 
 def upload_or_update_file(service, folder_id, local_path, file_name):
-    query = f"name='{file_name}' and '{folder_id}' in parents"
-    results = service.files().list(q=query, fields="files(id, name)").execute()
-    items = results.get("files", [])
-
     media = MediaFileUpload(local_path, resumable=True)
-
-    if items:
-        file_id = items[0]["id"]
-        service.files().update(fileId=file_id, media_body=media).execute()
-        print(f"✅ Updated: {file_name}")
-    else:
-        file_metadata = {"name": file_name, "parents": [folder_id]}
-        service.files().create(body=file_metadata, media_body=media, fields="id").execute()
-        print(f"📤 Uploaded: {file_name}")
+    try:
+        query = f"name='{file_name}' and '{folder_id}' in parents"
+        results = service.files().list(q=query, fields="files(id, name)").execute()
+        items = results.get("files", [])
+        if items:
+            file_id = items[0]["id"]
+            service.files().update(fileId=file_id, media_body=media).execute()
+            logger.info(f"Updated: {file_name}")
+        else:
+            file_metadata = {"name": file_name, "parents": [folder_id]}
+            service.files().create(body=file_metadata, media_body=media, fields="id").execute()
+            logger.info(f"Uploaded: {file_name}")
+    except Exception as e:
+        logger.error(f"Error uploading {file_name}: {e}")
 
 # ------------------- DOWNLOAD -------------------
 def download_file(url, save_path):
-    response = requests.get(url, stream=True)
-    if response.status_code == 200:
-        with open(save_path, "wb") as f:
-            shutil.copyfileobj(response.raw, f)
-        print(f"⬇️ Downloaded: {save_path}")
-    else:
-        print(f"❌ Failed to download {url}")
+    try:
+        response = requests.get(url, stream=True)
+        if response.status_code == 200:
+            with open(save_path, "wb") as f:
+                shutil.copyfileobj(response.raw, f)
+            logger.info(f"Downloaded: {save_path}")
+        else:
+            logger.error(f"Failed to download {url}")
+    except Exception as e:
+        logger.error(f"Exception downloading {url}: {e}")
 
 # ------------------- SYNC FOLDERS -------------------
 def sync_folder_to_drive(service, local_folder, drive_parent_id):
@@ -84,30 +95,20 @@ def sync_folder_to_drive(service, local_folder, drive_parent_id):
 # ------------------- MAIN WORKFLOW -------------------
 def process_files(files_to_download, owners):
     service = authenticate()
-
-    # 1. Ensure root folder on Drive
     root_folder_id = get_folder_id(service, "Instructor Files")
-
-    # 2. Prepare local backup directory
-    downloads_dir = Path("downloads")
+    downloads_dir = Path(BASE_DIR) / ".." / "downloads"
     downloads_dir.mkdir(exist_ok=True)
-
-    # 3. Create all owner folders locally & on Drive
     for owner in owners:
         owner_folder = downloads_dir / owner
         owner_folder.mkdir(exist_ok=True)
-        get_folder_id(service, owner, root_folder_id)  # ensure folder on Drive
-
-    # 4. Download files into owner folders
+        get_folder_id(service, owner, root_folder_id)
+    # Download and upload files
     for file_info in files_to_download:
+        file_url = file_info["url"]
         owner = file_info["owner"]
-        url = file_info["url"]
-        file_name = file_info["name"]
-
+        file_name = file_info["file_name"]
         owner_folder = downloads_dir / owner
         local_path = owner_folder / file_name
-        if not local_path.exists():  # don’t re-download if already exists
-            download_file(url, local_path)
-
-    # 5. Sync local backup folder with Drive
-    sync_folder_to_drive(service, str(downloads_dir), root_folder_id)
+        download_file(file_url, local_path)
+        owner_drive_id = get_folder_id(service, owner, root_folder_id)
+        upload_or_update_file(service, owner_drive_id, local_path, file_name)

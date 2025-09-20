@@ -117,23 +117,6 @@ def input_element(driver, by_locator, text: str, timeout: int = 10, max_retries:
         return False
 
 
-def get_element_text(driver, by_locator, timeout: int = 40, default: str = "") -> str:
-    """Get element text with exception handling and default value."""
-    try:
-        element = WebDriverWait(driver, timeout).until(EC.visibility_of_element_located(by_locator))
-        text = element.text.strip()
-        return text if text else default
-    except TimeoutException:
-        logger.warning(f"Element not visible for text extraction within {timeout} seconds: {by_locator}")
-        return default
-    except (NoSuchElementException, WebDriverException) as e:
-        logger.error(f"Error getting element text: {e}")
-        return default
-    except Exception as e:
-        logger.error(f"Unexpected error in get_element_text: {e}")
-        return default
-
-
 def get_undetected_driver(headless: bool = False, max_retries: int = 3) -> Optional[webdriver.Chrome]:
     """Create undetected Chrome driver with comprehensive error handling."""
     for attempt in range(max_retries):
